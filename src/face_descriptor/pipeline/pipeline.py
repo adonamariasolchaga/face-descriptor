@@ -6,6 +6,7 @@ import logging
 from typing import Sequence
 
 from face_descriptor.core.protocols import (
+    FaceAnalyzer,
     FaceDetector,
     ImageReader,
     Inferencer,
@@ -40,12 +41,14 @@ class FaceDescriptorPipeline:
         detector: FaceDetector,
         preprocessor: Preprocessor,
         inferencer: Inferencer | None = None,
+        analyzers: Sequence[FaceAnalyzer] | None = None,
         reporter: Reporter | None = None,
     ) -> None:
         self._reader = reader
         self._detector = detector
         self._preprocessor = preprocessor
         self._inferencer = inferencer
+        self._analyzers = analyzers
         self._reporter = reporter
 
     def run(self, sources: Sequence[str]) -> list[PipelineResult]:
@@ -75,11 +78,25 @@ class FaceDescriptorPipeline:
                 embedding = None
                 if self._inferencer is not None:
                     embedding = self._inferencer.infer(preprocessed)
+                metadata: dict[str, object] = {}
+                if self._analyzers:
+                    for analyzer in self._analyzers:
+                        try:
+                            attrs = analyzer.analyze(preprocessed)
+                            metadata.update(attrs)
+                        except Exception:
+                            logger.warning(
+                                "Analyzer %s failed for face in %s",
+                                type(analyzer).__name__,
+                                src,
+                                exc_info=True,
+                            )
                 results.append(
                     PipelineResult(
                         source=src,
                         face=face,
                         embedding=embedding,
+                        metadata=metadata,
                         image=image,
                         preprocessed_face=preprocessed,
                     )

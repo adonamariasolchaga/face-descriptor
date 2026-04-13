@@ -3,11 +3,21 @@
 from __future__ import annotations
 
 import logging
+import platform
+import subprocess
+import tempfile
 from pathlib import Path
 from typing import Sequence
 
 import matplotlib
-matplotlib.use("TkAgg")
+
+try:
+    import tkinter  # noqa: F401
+except ImportError:
+    # tkinter unavailable (common with Python 3.12+); fall back to the
+    # non-interactive Agg backend so figure creation still works.
+    matplotlib.use("Agg")
+
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import numpy as np
@@ -117,6 +127,8 @@ class VisualReporter:
             carry ``image`` and ``preprocessed_face`` (i.e. they must
             not be ``None``).
         """
+        interactive = matplotlib.get_backend().lower() != "agg"
+
         for idx, result in enumerate(results):
             fig = self._build_figure(result, idx)
 
@@ -125,8 +137,20 @@ class VisualReporter:
                 fig.savefig(str(dest), bbox_inches="tight", dpi=150)
                 logger.info("Saved visual report to %s", dest)
                 plt.close(fig)
-            else:
+            elif interactive:
                 plt.show()
+            else:
+                # Non-interactive backend: save to a temp file and open
+                # with the default system image viewer.
+                tmp = Path(tempfile.mkdtemp()) / f"visual_result_{idx:04d}.png"
+                fig.savefig(str(tmp), bbox_inches="tight", dpi=150)
+                plt.close(fig)
+                logger.info(
+                    "No interactive backend available; opening %s with "
+                    "default viewer",
+                    tmp,
+                )
+                self._open_with_default_viewer(tmp)
 
     # ------------------------------------------------------------------
     # Panel builders
@@ -242,6 +266,24 @@ class VisualReporter:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _open_with_default_viewer(path: Path) -> None:
+        """Open *path* with the operating system's default viewer."""
+        system = platform.system()
+        try:
+            if system == "Darwin":
+                subprocess.Popen(["open", str(path)])
+            elif system == "Windows":
+                # os.startfile is Windows-only; use subprocess for consistency.
+                subprocess.Popen(["cmd", "/c", "start", "", str(path)])
+            else:
+                subprocess.Popen(["xdg-open", str(path)])
+        except FileNotFoundError:
+            logger.warning(
+                "Could not open %s automatically. Please open it manually.",
+                path,
+            )
 
     @staticmethod
     def _normalise_for_display(data: NDArray[np.float32]) -> NDArray[np.uint8]:

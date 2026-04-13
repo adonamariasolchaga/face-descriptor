@@ -42,6 +42,16 @@ class Inferencer(Protocol):
     def infer(self, face: PreprocessedFace) -> Embedding: ...
 
 
+class FaceAnalyzer(Protocol):
+    """Extracts facial attributes from a preprocessed face.
+
+    Implementations should return a dictionary of attribute names to
+    predicted values (e.g. ``{"age": 25, "gender": "male"}``).
+    """
+
+    def analyze(self, face: PreprocessedFace) -> dict[str, object]: ...
+
+
 class Reporter(Protocol):
     """Outputs or persists a collection of pipeline results."""
 
