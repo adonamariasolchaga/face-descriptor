@@ -1,5 +1,9 @@
 # face_descriptor
 
+Project implement face processing components orchestable via analyzing pipelines:
+
+![visual_pipeline](docs/visual_pipeline.png)
+
 ## Requirements
 - Python 3.11+
 - [Poetry](https://python-poetry.org/) (`pipx install poetry`)
