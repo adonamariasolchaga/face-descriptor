@@ -6,6 +6,34 @@
 - Create virtual environment in project folder (`poetry config virtualenvs.in-project true`)
 - Versioning plugin: `poetry self add poetry-dynamic-versioning`
 
+
+## Quick Start
+The `scripts/visual_pipeline.py` script runs the full pipeline (detection → preprocessing → analysis → visual report) on a single image:
+
+```bash
+# CLone project
+git clone ...
+
+# Install pipx if not installed
+sudo apt install pipx
+
+# Install poetry if not installed
+pipx install poetry
+
+# Install dependencies
+poetry install --with dev
+
+# Display results interactively
+poetry run python scripts/visual_pipeline.py path/to/image.jpg
+
+# Use GPU for HuggingFace analyzers
+poetry run python scripts/visual_pipeline.py path/to/image.jpg --device cuda
+
+# Save figure to disk instead of displaying
+poetry run python scripts/visual_pipeline.py path/to/image.jpg --save-dir outputs/
+```
+
+
 ## Development
 
 ```bash
@@ -59,8 +87,8 @@ Download a pretrained ONNX model from the [InsightFace model zoo](https://github
 
 | Model | Easy | Medium | Hard | FLOPs | Link |
 |-------|------|--------|------|-------|------|
-| SCRFD_2.5G_KPS | 93.80 | 92.02 | 77.13 | 2.5G | [download](https://github.com/deepinsight/insightface/releases/download/v0.4/scrfd_2.5g_bnkps.onnx) |
-| SCRFD_10G_KPS | 95.40 | 94.01 | 82.80 | 10G | [download](https://github.com/deepinsight/insightface/releases/download/v0.4/scrfd_10g_bnkps.onnx) |
+| SCRFD_2.5G_KPS | 93.80 | 92.02 | 77.13 | 2.5G | [info](https://github.com/deepinsight/insightface/tree/master/detection/scrfd) |
+| SCRFD_10G_KPS | 95.40 | 94.01 | 82.80 | 10G | [info](https://github.com/deepinsight/insightface/tree/master/detection/scrfd) |
 
 Place the `.onnx` file under `models/` and pass the path to `SCRFDDetector(model_path=...)`.
 
@@ -84,21 +112,6 @@ All HuggingFace models are loaded lazily on first use and support `device="cpu"`
 |----------|-----------|--------|
 | `SkinToneAnalyzer` | Fitzpatrick skin type (I–VI) | ITA (Individual Typology Angle) computed from CIE-Lab colour space — no model required |
 
-
-## Quick Start
-
-The `scripts/visual_pipeline.py` script runs the full pipeline (detection → preprocessing → analysis → visual report) on a single image:
-
-```bash
-# Display results interactively
-poetry run python scripts/visual_pipeline.py path/to/image.jpg
-
-# Use GPU for HuggingFace analyzers
-poetry run python scripts/visual_pipeline.py path/to/image.jpg --device cuda
-
-# Save figure to disk instead of displaying
-poetry run python scripts/visual_pipeline.py path/to/image.jpg --save-dir outputs/
-```
 
 ## Contributing
 
