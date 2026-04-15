@@ -158,10 +158,11 @@ class GenderAnalyzer(_HuggingFaceClassifierBase):
         }
 
 
+# Faulty hugging face native usage
 class GlassesAnalyzer(_HuggingFaceClassifierBase):
     """Detects whether a face is wearing glasses.
 
-    Uses the ``OmarSalah95/Eyeglasses-Classifier`` model from
+    Uses the ``youngp5/eyeglasses_detection`` model from
     HuggingFace Hub (fine-tuned ViT on glasses / no-glasses).
 
     Parameters
@@ -171,7 +172,7 @@ class GlassesAnalyzer(_HuggingFaceClassifierBase):
     """
 
     def __init__(self, *, device: str = "cpu") -> None:
-        super().__init__("OmarSalah95/Eyeglasses-Classifier", device=device)
+        super().__init__("youngp5/eyeglasses_detection", device=device)
 
     def analyze(self, face: PreprocessedFace) -> dict[str, object]:
         """Return ``{"glasses": bool, "glasses_confidence": float}``."""
@@ -188,7 +189,7 @@ class GlassesAnalyzer(_HuggingFaceClassifierBase):
 class FacialHairAnalyzer(_HuggingFaceClassifierBase):
     """Detects facial hair attributes.
 
-    Uses the ``dima806/facial_hair_image_detection`` model from
+    Uses the ``dima806/beard_face_image_detection`` model from
     HuggingFace Hub.
 
     Parameters
@@ -198,7 +199,7 @@ class FacialHairAnalyzer(_HuggingFaceClassifierBase):
     """
 
     def __init__(self, *, device: str = "cpu") -> None:
-        super().__init__("dima806/facial_hair_image_detection", device=device)
+        super().__init__("dima806/beard_face_image_detection", device=device)
 
     def analyze(self, face: PreprocessedFace) -> dict[str, object]:
         """Return ``{"facial_hair": str, "facial_hair_confidence": float}``."""

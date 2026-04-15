@@ -67,45 +67,47 @@ class JsonReporter:
 
 
 class VisualReporter:
-    """Displays a 4-panel figure for each pipeline result.
+    """Displays a single figure per source image summarising all detections.
 
-    Panels
+    Layout
     ------
-    1. **Original image** — the raw image as read from disk.
-    2. **Detection overlay** — bounding boxes and landmarks drawn on the image.
-    3. **Preprocessed face** — the aligned / normalised face crop.
-    4. **Model predictions** — textual summary of metadata entries
-       (age, gender, facial attributes, anti-spoofing, etc.).
+    - **Row 0**: original image (left) + all detections overlay (right),
+      spanning 3 columns each across a 6-column grid.
+    - **Rows 1+**: a fixed 6-column grid where each cell shows one
+      detected face (preprocessed crop + predictions overlaid as text).
 
     Parameters
     ----------
-    figsize:
-        Matplotlib figure size ``(width, height)`` in inches.
+    grid_cols:
+        Number of columns in the face grid. Defaults to ``6``.
+    figsize_base:
+        Base ``(width, height)`` in inches for the top row.
     bbox_color:
-        RGB colour tuple ``(R, G, B)`` in ``[0, 255]`` used for bounding boxes.
+        RGB colour tuple ``(R, G, B)`` in ``[0, 255]``.
     landmark_color:
-        RGB colour tuple ``(R, G, B)`` in ``[0, 255]`` used for landmark dots.
+        RGB colour tuple ``(R, G, B)`` in ``[0, 255]``.
     bbox_thickness:
-        Line thickness for bounding boxes in pixels.
+        Line thickness for bounding boxes.
     landmark_radius:
-        Radius of landmark circles in pixels.
+        Marker size for landmark dots.
     save_dir:
-        If provided, each figure is saved to this directory instead of
-        being displayed interactively.
+        If set, figures are saved here instead of displayed.
     """
 
     def __init__(
         self,
-        figsize: tuple[float, float] = (18, 5),
+        grid_cols: int = 6,
+        figsize_base: tuple[float, float] = (18, 5),
         bbox_color: tuple[int, int, int] = (0, 255, 0),
         landmark_color: tuple[int, int, int] = (0, 0, 255),
         bbox_thickness: int = 2,
         landmark_radius: int = 3,
         save_dir: str | Path | None = None,
     ) -> None:
-        self._figsize = figsize
-        self._bbox_color = bbox_color
-        self._landmark_color = landmark_color
+        self._grid_cols = grid_cols
+        self._figsize_base = figsize_base
+        self._bbox_color = tuple(c / 255.0 for c in bbox_color)
+        self._landmark_color = tuple(c / 255.0 for c in landmark_color)
         self._bbox_thickness = bbox_thickness
         self._landmark_radius = landmark_radius
         self._save_dir = Path(save_dir) if save_dir is not None else None
@@ -114,23 +116,15 @@ class VisualReporter:
             self._save_dir.mkdir(parents=True, exist_ok=True)
 
     # ------------------------------------------------------------------
-    # Public API (satisfies Reporter protocol)
+    # Public API
     # ------------------------------------------------------------------
 
     def report(self, results: Sequence[PipelineResult]) -> None:
-        """Render a 4-panel visualisation for every result.
-
-        Parameters
-        ----------
-        results:
-            The pipeline results to visualise.  Each result **must**
-            carry ``image`` and ``preprocessed_face`` (i.e. they must
-            not be ``None``).
-        """
+        grouped = self._group_by_source(results)
         interactive = matplotlib.get_backend().lower() != "agg"
 
-        for idx, result in enumerate(results):
-            fig = self._build_figure(result, idx)
+        for idx, (source, group) in enumerate(grouped.items()):
+            fig = self._build_figure(source, group)
 
             if self._save_dir is not None:
                 dest = self._save_dir / f"visual_result_{idx:04d}.png"
@@ -140,90 +134,119 @@ class VisualReporter:
             elif interactive:
                 plt.show()
             else:
-                # Non-interactive backend: save to a temp file and open
-                # with the default system image viewer.
                 tmp = Path(tempfile.mkdtemp()) / f"visual_result_{idx:04d}.png"
                 fig.savefig(str(tmp), bbox_inches="tight", dpi=150)
                 plt.close(fig)
-                logger.info(
-                    "No interactive backend available; opening %s with "
-                    "default viewer",
-                    tmp,
-                )
+                logger.info("No interactive backend; opening %s", tmp)
                 self._open_with_default_viewer(tmp)
 
     # ------------------------------------------------------------------
-    # Panel builders
+    # Figure construction
     # ------------------------------------------------------------------
 
-    def _build_figure(self, result: PipelineResult, idx: int) -> Figure:
-        """Compose the 4-panel figure for a single *result*."""
-        fig, axes = plt.subplots(1, 4, figsize=self._figsize)
-        fig.suptitle(f"Result {idx} — {result.source}", fontsize=12)
+    def _build_figure(self, source: str, results: list[PipelineResult]) -> Figure:
+        import math
 
-        self._panel_original(axes[0], result)
-        self._panel_detection(axes[1], result)
-        self._panel_preprocessed(axes[2], result)
-        self._panel_predictions(axes[3], result)
+        cols = self._grid_cols
+        n_faces = len(results)
+        face_rows = max(1, math.ceil(n_faces / cols))
+
+        base_w, base_h = self._figsize_base
+        cell_h = base_h * 0.6
+        fig_h = base_h + face_rows * cell_h
+
+        # Total rows: 1 (top) + face_rows
+        n_rows = 1 + face_rows
+        fig, axes = plt.subplots(
+            n_rows, cols,
+            figsize=(base_w, fig_h),
+            gridspec_kw={"height_ratios": [base_h] + [cell_h] * face_rows},
+        )
+        fig.suptitle(source, fontsize=12)
+
+        # Ensure axes is always 2-D
+        if n_rows == 1:
+            axes = axes[np.newaxis, :]
+        if axes.ndim == 1:
+            axes = axes.reshape(1, -1)
+
+        # --- Top row: merge left 3 cols for original, right 3 for detections ---
+        for c in range(cols):
+            axes[0, c].set_axis_off()
+
+        # Original image — drawn on the left-half merged axis
+        ax_orig = fig.add_subplot(n_rows, 2, 1)
+        self._panel_original(ax_orig, results[0])
+
+        # Detections overlay — drawn on the right-half merged axis
+        ax_det = fig.add_subplot(n_rows, 2, 2)
+        self._panel_all_detections(ax_det, results)
+
+        # --- Face grid rows ---
+        for i, result in enumerate(results):
+            row = 1 + i // cols
+            col = i % cols
+            ax = axes[row, col]
+            self._panel_face_cell(ax, result, face_idx=i)
+
+        # Hide unused cells
+        for i in range(n_faces, face_rows * cols):
+            row = 1 + i // cols
+            col = i % cols
+            axes[row, col].set_axis_off()
 
         fig.tight_layout()
         return fig
 
+    # ------------------------------------------------------------------
+    # Panels
+    # ------------------------------------------------------------------
+
     def _panel_original(self, ax: plt.Axes, result: PipelineResult) -> None:
-        """Panel 1: the raw input image."""
         ax.set_title("Original image")
         if result.image is None:
             ax.text(0.5, 0.5, "Image not available", ha="center", va="center")
             ax.set_axis_off()
             return
-
         ax.imshow(result.image.data)
         ax.set_axis_off()
 
-    def _panel_detection(self, ax: plt.Axes, result: PipelineResult) -> None:
-        """Panel 2: bounding boxes and landmarks overlaid on the image."""
-        ax.set_title("Face detection")
-        if result.image is None:
+    def _panel_all_detections(self, ax: plt.Axes, results: list[PipelineResult]) -> None:
+        ax.set_title(f"Detections ({len(results)} face(s))")
+        image = results[0].image
+        if image is None:
             ax.text(0.5, 0.5, "Image not available", ha="center", va="center")
             ax.set_axis_off()
             return
 
-        ax.imshow(result.image.data)
-
-        face = result.face
-        bbox = face.bbox
-        bbox_color_norm = tuple(c / 255.0 for c in self._bbox_color)
-        landmark_color_norm = tuple(c / 255.0 for c in self._landmark_color)
-
-        rect = patches.Rectangle(
-            (bbox.x, bbox.y),
-            bbox.w,
-            bbox.h,
-            linewidth=self._bbox_thickness,
-            edgecolor=bbox_color_norm,
-            facecolor="none",
-        )
-        ax.add_patch(rect)
-
-        ax.text(
-            bbox.x,
-            max(bbox.y - 6, 0),
-            f"{face.confidence:.2f}",
-            fontsize=8,
-            color=bbox_color_norm,
-        )
-
-        if face.landmarks is not None:
-            for lx, ly in face.landmarks.astype(int):
-                ax.plot(lx, ly, "o", color=landmark_color_norm, markersize=self._landmark_radius)
-
+        ax.imshow(image.data)
+        for i, r in enumerate(results):
+            bbox = r.face.bbox
+            rect = patches.Rectangle(
+                (bbox.x, bbox.y), bbox.w, bbox.h,
+                linewidth=self._bbox_thickness,
+                edgecolor=self._bbox_color,
+                facecolor="none",
+            )
+            ax.add_patch(rect)
+            ax.text(
+                bbox.x, max(bbox.y - 6, 0),
+                f"#{i} ({r.face.confidence:.2f})",
+                fontsize=8, color=self._bbox_color,
+            )
+            if r.face.landmarks is not None:
+                for lx, ly in r.face.landmarks.astype(int):
+                    ax.plot(lx, ly, "o", color=self._landmark_color,
+                            markersize=self._landmark_radius)
         ax.set_axis_off()
 
-    def _panel_preprocessed(self, ax: plt.Axes, result: PipelineResult) -> None:
-        """Panel 3: the aligned / normalised face crop."""
-        ax.set_title("Preprocessed face")
+    def _panel_face_cell(self, ax: plt.Axes, result: PipelineResult,
+                         face_idx: int) -> None:
+        """Single grid cell: preprocessed face with predictions as overlay text."""
+        ax.set_title(f"#{face_idx}", fontsize=9, pad=2)
+
         if result.preprocessed_face is None:
-            ax.text(0.5, 0.5, "Not available", ha="center", va="center")
+            ax.text(0.5, 0.5, "N/A", ha="center", va="center")
             ax.set_axis_off()
             return
 
@@ -231,66 +254,46 @@ class VisualReporter:
         ax.imshow(displayable)
         ax.set_axis_off()
 
-    def _panel_predictions(self, ax: plt.Axes, result: PipelineResult) -> None:
-        """Panel 4: textual model-prediction summary from metadata."""
-        ax.set_title("Model predictions")
-        ax.set_axis_off()
-
-        if not result.metadata:
+        # Overlay predictions text
+        if result.metadata:
+            lines = [
+                f"{k}: {v:.4f}" if isinstance(v, float) else f"{k}: {v}"
+                for k, v in result.metadata.items()
+            ]
             ax.text(
-                0.5, 0.5,
-                "No predictions available",
-                ha="center", va="center",
-                fontsize=10, style="italic", color="grey",
+                0.02, 0.98, "\n".join(lines),
+                transform=ax.transAxes,
+                fontsize=6, verticalalignment="top",
+                fontfamily="monospace", color="white",
+                bbox={"boxstyle": "round,pad=0.2", "facecolor": "black", "alpha": 0.6},
             )
-            return
-
-        lines: list[str] = []
-        for key, value in result.metadata.items():
-            if isinstance(value, float):
-                lines.append(f"{key}: {value:.4f}")
-            else:
-                lines.append(f"{key}: {value}")
-
-        text_block = "\n".join(lines)
-        ax.text(
-            0.05, 0.95,
-            text_block,
-            transform=ax.transAxes,
-            fontsize=10,
-            verticalalignment="top",
-            fontfamily="monospace",
-            bbox={"boxstyle": "round,pad=0.4", "facecolor": "wheat", "alpha": 0.5},
-        )
 
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _group_by_source(results: Sequence[PipelineResult]) -> dict[str, list[PipelineResult]]:
+        grouped: dict[str, list[PipelineResult]] = {}
+        for r in results:
+            grouped.setdefault(r.source, []).append(r)
+        return grouped
+
+    @staticmethod
     def _open_with_default_viewer(path: Path) -> None:
-        """Open *path* with the operating system's default viewer."""
         system = platform.system()
         try:
             if system == "Darwin":
                 subprocess.Popen(["open", str(path)])
             elif system == "Windows":
-                # os.startfile is Windows-only; use subprocess for consistency.
                 subprocess.Popen(["cmd", "/c", "start", "", str(path)])
             else:
                 subprocess.Popen(["xdg-open", str(path)])
         except FileNotFoundError:
-            logger.warning(
-                "Could not open %s automatically. Please open it manually.",
-                path,
-            )
+            logger.warning("Could not open %s automatically.", path)
 
     @staticmethod
     def _normalise_for_display(data: NDArray[np.float32]) -> NDArray[np.uint8]:
-        """Scale a float tensor into displayable ``[0, 255]`` uint8 range.
-
-        Assumes the input is already in RGB channel order.
-        """
         min_val, max_val = data.min(), data.max()
         if max_val - min_val < 1e-6:
             return np.zeros_like(data, dtype=np.uint8)

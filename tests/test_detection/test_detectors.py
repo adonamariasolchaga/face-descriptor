@@ -23,7 +23,5 @@ def test_scrfd_inference(sample_multifaceimage):
     detections = detector.detect(
         image=sample_multifaceimage
     )
-    for det in detections:
-        print(det)
-        print("="*5)
-    assert False
+    # 4 faces in multiple_face_1.jpg
+    assert len(detections) == 4

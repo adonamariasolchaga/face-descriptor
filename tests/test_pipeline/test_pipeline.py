@@ -69,8 +69,8 @@ def test_visual_report(
     results = pipeline.run([multifaceimage_path])
     assert len(results) > 0
 
-    reporter = VisualReporter()#save_dir=tmp_path)
+    reporter = VisualReporter(save_dir=tmp_path)
     reporter.report(results)
 
     saved = list(tmp_path.glob("*.png"))
-    assert len(saved) == len(results)
+    assert len(saved) == 1

@@ -17,7 +17,6 @@ from face_descriptor.analysis.analyzers import (
     AgeAnalyzer,
     FacialHairAnalyzer,
     GenderAnalyzer,
-    GlassesAnalyzer,
     SkinToneAnalyzer,
 )
 from face_descriptor.detection.detectors import SCRFDDetector
@@ -34,9 +33,8 @@ def _build_analyzers(device: str = "cpu") -> list:
     return [
         AgeAnalyzer(device=device),
         GenderAnalyzer(device=device),
-        GlassesAnalyzer(device=device),
         FacialHairAnalyzer(device=device),
-        SkinToneAnalyzer(),  # algorithmic — no device needed
+        SkinToneAnalyzer(),
     ]
 
 
