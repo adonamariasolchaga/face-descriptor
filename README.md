@@ -1,6 +1,6 @@
 # face_descriptor
 
-Project implement face processing components orchestable via analyzing pipelines:
+Project implementing face processing components orchestable via analyzing pipelines:
 
 ![visual_pipeline](docs/visual_pipeline.png)
 
